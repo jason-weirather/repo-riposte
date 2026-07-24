@@ -5,7 +5,8 @@ from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from repo_riposte._meta import SNAPSHOT_FORMAT_VERSION, __version__
+from repo_riposte._meta import SNAPSHOT_FORMAT_VERSION
+from repo_riposte._version import __version__
 from repo_riposte.models import GitFile, IncludedFile, Snapshot
 from repo_riposte.policy import SAFETY_REASON_PREFIX
 

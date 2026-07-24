@@ -8,7 +8,7 @@ from pathlib import Path
 
 import click
 
-from repo_riposte._meta import __version__
+from repo_riposte._version import __version__
 from repo_riposte.git import GitError, open_repository
 from repo_riposte.models import Snapshot
 from repo_riposte.policy import InclusionPolicy

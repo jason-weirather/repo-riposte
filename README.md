@@ -24,6 +24,35 @@ repo-riposte --version
 
 This installs the `repo-riposte` command through the package entry point. After replacing an older editable checkout, rerun the install command so the entry point and package metadata are refreshed.
 
+## Version source
+
+The authoritative package version is the static `version` value in
+`pyproject.toml`:
+
+```toml
+[project]
+version = "0.2.1"
+```
+
+The package exposes the same value at runtime:
+
+```python
+import repo_riposte
+
+print(repo_riposte.__version__)
+```
+
+`src/repo_riposte/_version.py` reads `pyproject.toml` directly when running
+from a source checkout or editable install. A built wheel normally does not
+contain the repository-root `pyproject.toml`, so an installed wheel reads its
+standard distribution metadata instead. That metadata was generated from the
+same `[project].version` value during the build, keeping `pyproject.toml` as the
+single source of truth without requiring the build file to be shipped inside
+the runtime package.
+
+Python 3.11 and newer use the standard-library `tomllib`; Python 3.10 installs
+the small `tomli` compatibility dependency.
+
 ## Default output filename
 
 No output option is required:

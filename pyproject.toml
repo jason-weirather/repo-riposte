@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "repo-riposte"
-version = "0.2.0"
+version = "0.2.1"
 description = "Render an exact Git commit as one LLM-friendly Markdown document."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -15,6 +15,7 @@ authors = [
 ]
 dependencies = [
   "click>=8.1",
+  "tomli>=2.0.1; python_version < '3.11'",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
