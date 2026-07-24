@@ -1,17 +1,17 @@
 [build-system]
-requires = ["hatchling>=1.27"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "repo-riposte"
-version = "0.1.0"
+version = "0.2.0"
 description = "Render an exact Git commit as one LLM-friendly Markdown document."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [
-  { name = "Jason L Weirather" },
+  { name = "Jason Weirather" },
 ]
 dependencies = [
   "click>=8.1",
@@ -39,11 +39,14 @@ dev = [
   "ruff>=0.9",
 ]
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/repo_riposte"]
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["repo_riposte*"]
+namespaces = false
 
 [tool.pytest.ini_options]
 addopts = "-q"
+pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.ruff]

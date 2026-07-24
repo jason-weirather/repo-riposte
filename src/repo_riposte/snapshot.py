@@ -24,7 +24,6 @@ def build_snapshot(
 
     candidates = []
     omitted: list[OmittedFile] = []
-
     for entry in tracked_files:
         reason = policy.preflight_omission_reason(entry)
         if reason:
@@ -32,23 +31,17 @@ def build_snapshot(
         else:
             candidates.append(entry)
 
-    # Root README first, then root project metadata, then normal path order.
-    # This ordering also determines which files survive a total document budget.
     candidates.sort(key=lambda entry: content_sort_key(entry.path))
 
     included: list[IncludedFile] = []
     included_bytes = 0
-
     for entry, data in repository.iter_blobs(candidates):
         text, reason = inspect_text(data)
         if reason is not None or text is None:
-            omitted.append(
-                OmittedFile(entry=entry, reason=reason or "not text")
-            )
+            omitted.append(OmittedFile(entry=entry, reason=reason or "not text"))
             continue
 
         size_bytes = entry.size_bytes or 0
-
         if (
             policy.max_included_files is not None
             and len(included) >= policy.max_included_files
@@ -57,13 +50,11 @@ def build_snapshot(
                 OmittedFile(
                     entry=entry,
                     reason=(
-                        f"exceeds the "
-                        f"{policy.max_included_files:,}-file document limit"
+                        f"exceeds the {policy.max_included_files:,}-file document limit"
                     ),
                 )
             )
             continue
-
         if (
             policy.max_total_bytes is not None
             and included_bytes + size_bytes > policy.max_total_bytes
@@ -72,8 +63,7 @@ def build_snapshot(
                 OmittedFile(
                     entry=entry,
                     reason=(
-                        f"would exceed the "
-                        f"{policy.max_total_bytes // 1024:,} KiB "
+                        f"would exceed the {policy.max_total_bytes // 1024:,} KiB "
                         "document limit"
                     ),
                 )

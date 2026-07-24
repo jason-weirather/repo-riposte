@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
 
 import click
 
-from repo_riposte import __version__
+from repo_riposte._meta import __version__
 from repo_riposte.git import GitError, open_repository
+from repo_riposte.models import Snapshot
 from repo_riposte.policy import InclusionPolicy
 from repo_riposte.render import render_snapshot
 from repo_riposte.snapshot import build_snapshot
@@ -19,23 +21,28 @@ from repo_riposte.snapshot import build_snapshot
 @click.option(
     "-b",
     "--branch",
-    help="Branch whose tip is used, or against which --commit is validated.",
+    metavar="BRANCH",
+    help="Render the tip of BRANCH, or validate --commit against it.",
 )
 @click.option(
     "-c",
     "--commit",
     "commit_ref",
+    metavar="COMMIT",
     help=(
         "Commit, tag, or other commit-ish to render. "
-        "Must be reachable from --branch when both are set."
+        "When --branch is also given, COMMIT must be reachable from it."
     ),
 )
 @click.option(
     "-o",
     "--output",
-    default="-",
-    show_default=True,
-    help="Output Markdown path, or '-' for standard output.",
+    metavar="PATH",
+    help=(
+        "Write Markdown to PATH. By default writes "
+        "<repository>-<7-character-commit>.md in the current directory. "
+        "Use '-' for standard output."
+    ),
 )
 @click.option(
     "--max-file-kb",
@@ -49,7 +56,7 @@ from repo_riposte.snapshot import build_snapshot
     type=click.IntRange(min=1),
     default=256,
     show_default=True,
-    help="Lower size limit for files not recognized as code or structured metadata.",
+    help="Lower size limit for files not recognized as code or project metadata.",
 )
 @click.option(
     "--max-total-kb",
@@ -69,14 +76,25 @@ from repo_riposte.snapshot import build_snapshot
     "--exclude",
     "exclude_patterns",
     multiple=True,
+    metavar="GLOB",
     help="Exclude a tracked path using a shell-style glob. Repeatable.",
+)
+@click.option(
+    "--include-sensitive-files",
+    "--include-sensitive",
+    "include_sensitive",
+    is_flag=True,
+    help=(
+        "Include normally protected environment and key files such as .env, "
+        ".env.local, *.env, *.pem, and *.key. Use with care."
+    ),
 )
 @click.option(
     "--tree-max-children",
     type=click.IntRange(min=1),
     default=40,
     show_default=True,
-    help="Maximum entries shown per directory before that branch is abbreviated.",
+    help="Maximum entries shown per directory before that tree branch is abbreviated.",
 )
 @click.option(
     "--omitted-details-limit",
@@ -90,25 +108,24 @@ def main(
     repository: str,
     branch: str | None,
     commit_ref: str | None,
-    output: str,
+    output: str | None,
     max_file_kb: int,
     max_noncode_kb: int,
     max_total_kb: int,
     max_files: int,
     exclude_patterns: tuple[str, ...],
+    include_sensitive: bool,
     tree_max_children: int,
     omitted_details_limit: int,
 ) -> None:
-    """Render REPOSITORY at an exact Git commit as one Markdown document.
+    """Render one exact Git commit as a single Markdown document.
 
-    REPOSITORY may be a local working tree, a bare repository, or a cloneable
-    Git URL. No checkout is modified; tracked blobs are read directly from
-    Git's object database.
+    REPOSITORY defaults to the current directory. It may be a local working
+    tree, a bare repository, or a cloneable HTTPS/SSH Git location. No checkout
+    is modified; tracked blobs are read directly from Git's object database.
     """
     if max_noncode_kb > max_file_kb:
-        raise click.UsageError(
-            "--max-noncode-kb cannot exceed --max-file-kb."
-        )
+        raise click.UsageError("--max-noncode-kb cannot exceed --max-file-kb.")
 
     policy = InclusionPolicy(
         max_file_bytes=max_file_kb * 1024,
@@ -116,6 +133,7 @@ def main(
         max_total_bytes=max_total_kb * 1024 if max_total_kb else None,
         max_included_files=max_files or None,
         exclude_patterns=exclude_patterns,
+        exclude_sensitive=not include_sensitive,
     )
 
     try:
@@ -132,19 +150,39 @@ def main(
                 omitted_details_limit=omitted_details_limit,
             )
 
-        _write_output(markdown, output)
+        selected_output = output or default_output_filename(snapshot)
+        destination = _write_output(markdown, selected_output)
+        if destination is not None:
+            click.echo(f"Wrote {destination.resolve()}", err=True)
     except GitError as exc:
         raise click.ClickException(str(exc)) from exc
     except OSError as exc:
         raise click.ClickException(str(exc)) from exc
 
 
-def _write_output(markdown: str, output: str) -> None:
+def default_output_filename(snapshot: Snapshot) -> str:
+    """Return the deterministic default output name for a snapshot."""
+    repository_name = _safe_filename_component(snapshot.repository_name)
+    short_sha = snapshot.commit.sha[:7].lower()
+    return f"{repository_name}-{short_sha}.md"
+
+
+def _safe_filename_component(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("._-")
+    cleaned = cleaned[:120].rstrip("._-")
+    return cleaned or "repository"
+
+
+def _write_output(markdown: str, output: str) -> Path | None:
     if output == "-":
         sys.stdout.write(markdown)
-        return
+        return None
+    if not output.strip():
+        raise OSError("Output path cannot be empty.")
 
     destination = Path(output).expanduser()
+    if destination.exists() and destination.is_dir():
+        raise OSError(f"Output path is a directory: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     temporary_name: str | None = None
@@ -162,8 +200,9 @@ def _write_output(markdown: str, output: str) -> None:
             handle.write(markdown)
             handle.flush()
             os.fsync(handle.fileno())
-
         os.replace(temporary_name, destination)
+        temporary_name = None
+        return destination
     finally:
         if temporary_name is not None:
             try:
