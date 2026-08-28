@@ -325,11 +325,14 @@ def open_repository(source: str) -> Iterator[GitRepository]:
 
     with tempfile.TemporaryDirectory(prefix="repo-riposte-") as temporary_directory:
         target = Path(temporary_directory) / "repository.git"
+        safe_source = _safe_repository_label(source)
+
+        # Snapshot construction needs blob sizes and contents. A filtered clone
+        # only defers that traffic and can fragment it into later promisor fetches.
         command = [
             "git",
             "clone",
             "--bare",
-            "--filter=blob:none",
             "--quiet",
             "--",
             source,
@@ -343,34 +346,8 @@ def open_repository(source: str) -> Iterator[GitRepository]:
             env=_git_environment(),
         )
         if result.returncode != 0:
-            filtered_error = result.stderr.decode("utf-8", "replace").strip()
-            filtered_error = filtered_error.replace(source, _safe_repository_label(source))
-            shutil.rmtree(target, ignore_errors=True)
-            fallback_command = [
-                "git",
-                "clone",
-                "--bare",
-                "--quiet",
-                "--",
-                source,
-                str(target),
-            ]
-            result = subprocess.run(
-                fallback_command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-                env=_git_environment(),
-            )
-            if result.returncode != 0:
-                fallback_error = result.stderr.decode("utf-8", "replace").strip()
-                fallback_error = fallback_error.replace(
-                    source, _safe_repository_label(source)
-                )
-                safe_source = _safe_repository_label(source)
-                raise GitError(
-                    f"Could not clone repository {safe_source!r}.\n"
-                    f"Filtered clone: {filtered_error}\n"
-                    f"Fallback clone: {fallback_error}"
-                )
-        yield GitRepository(target, _safe_repository_label(source))
+            clone_error = result.stderr.decode("utf-8", "replace").strip()
+            clone_error = clone_error.replace(source, safe_source)
+            raise GitError(f"Could not clone repository {safe_source!r}.\n{clone_error}")
+
+        yield GitRepository(target, safe_source)
